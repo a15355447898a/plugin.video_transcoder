@@ -69,6 +69,8 @@ class GlobalSettings:
             "output_settings":        {
                 "keep_container": True,
                 "dest_container": "mkv",
+                "transcode_audio_to_aac": False,
+                "audio_bitrate_kbps": 256,
             },
             "filter_settings":        {
                 "apply_smart_filters":      False,
@@ -256,6 +258,33 @@ class GlobalSettings:
             ],
         }
         if self.settings.get_setting('keep_container'):
+            values["display"] = 'hidden'
+        return values
+
+    def get_transcode_audio_to_aac_form_settings(self):
+        values = {
+            "label":       "Transcode audio to AAC",
+            "description": "When enabled, audio streams are transcoded to AAC instead of copied.",
+            "sub_setting": True,
+        }
+        if self.settings.get_setting('mode') not in ['basic', 'standard']:
+            values["display"] = 'hidden'
+        return values
+
+    def get_audio_bitrate_kbps_form_settings(self):
+        values = {
+            "label":          "AAC audio bitrate",
+            "sub_setting":    True,
+            "input_type":     "slider",
+            "slider_options": {
+                "min":    64,
+                "max":    512,
+                "suffix": "k",
+            },
+        }
+        if not self.settings.get_setting('transcode_audio_to_aac'):
+            values["display"] = 'hidden'
+        if self.settings.get_setting('mode') not in ['basic', 'standard']:
             values["display"] = 'hidden'
         return values
 

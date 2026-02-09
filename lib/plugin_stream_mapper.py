@@ -38,7 +38,7 @@ logger = logging.getLogger("Unmanic.Plugin.video_transcoder")
 
 class PluginStreamMapper(StreamMapper):
     def __init__(self, worker_log=None):
-        super(PluginStreamMapper, self).__init__(logger, ['video', 'data', 'attachment'])
+        super(PluginStreamMapper, self).__init__(logger, ['video', 'audio', 'data', 'attachment'])
         self.worker_log = worker_log if isinstance(worker_log, list) else None
         self.abspath = None
         self.settings = None
@@ -318,6 +318,8 @@ class PluginStreamMapper(StreamMapper):
         # Check if video filters need to be applied (build_filter_chain)
         codec_type = stream_info.get('codec_type', '').lower()
         codec_name = stream_info.get('codec_name', '').lower()
+        if codec_type in ['audio']:
+            return bool(self.settings.get_setting('transcode_audio_to_aac'))
         if self.settings.get_setting('apply_smart_filters'):
             # Video filters
             if codec_type in ['video']:
@@ -457,6 +459,24 @@ class PluginStreamMapper(StreamMapper):
                 }
             # Resort to returning 'False' to let the default mapping just copy the attachment stream
             return False
+        elif codec_type in ['audio']:
+            if not self.settings.get_setting('transcode_audio_to_aac'):
+                return False
+            bitrate_kbps = self.settings.get_setting('audio_bitrate_kbps') or 256
+            tools.append_worker_log(
+                self.worker_log,
+                "Stream mapper mapping audio stream {} for AAC encoding (bitrate={}k)".format(
+                    stream_id, bitrate_kbps
+                )
+            )
+            stream_encoding = [
+                '-c:{}'.format(stream_specifier), 'aac',
+                '-b:{}'.format(stream_specifier), '{}k'.format(bitrate_kbps),
+            ]
+            return {
+                'stream_mapping':  ['-map', map_identifier],
+                'stream_encoding': stream_encoding,
+            }
         else:
             raise Exception("Unsupported codec type {}".format())
 

@@ -48,6 +48,15 @@ from unmanic.libs.unplugins.settings import PluginSettings
 # Configure plugin logger
 logger = logging.getLogger("Unmanic.Plugin.video_transcoder")
 
+SKIP_FILE_EXTENSIONS = {'.jpg', '.jpeg', '.png'}
+
+
+def should_skip_file(path):
+    if not path:
+        return False
+    _, ext = os.path.splitext(path)
+    return ext.lower() in SKIP_FILE_EXTENSIONS
+
 
 class Settings(PluginSettings):
 
@@ -197,6 +206,9 @@ def on_library_management_file_test(data, file_metadata=None):
 
     # Get the path to the file
     abspath = data.get('path')
+    if should_skip_file(abspath):
+        logger.debug("Skipping non-video image file by extension: '%s'", abspath)
+        return
 
     # Get file probe
     probe = Probe.init_probe(data, logger, allowed_mimetypes=['video'])
@@ -251,6 +263,9 @@ def on_worker_process(data, file_metadata=None):
 
     # Get the path to the file
     abspath = data.get('file_in')
+    if should_skip_file(abspath):
+        tools.append_worker_log(worker_log, "Skipping image file by extension: {}".format(abspath))
+        return
 
     # Get file probe
     tools.append_worker_log(worker_log, "Probing file: {}".format(abspath))
