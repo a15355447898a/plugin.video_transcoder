@@ -48,7 +48,7 @@ from unmanic.libs.unplugins.settings import PluginSettings
 # Configure plugin logger
 logger = logging.getLogger("Unmanic.Plugin.video_transcoder")
 
-SKIP_FILE_EXTENSIONS = {'.jpg', '.jpeg', '.png'}
+SKIP_FILE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.avif', '.webp'}
 
 
 def should_skip_file(path):
