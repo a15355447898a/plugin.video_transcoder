@@ -44,6 +44,58 @@ class QsvEncoder(Encoder):
     def __init__(self, settings=None, probe=None):
         super().__init__(settings=settings, probe=probe)
 
+    @staticmethod
+    def _parse_stream_fps(stream_info):
+        """
+        Parse FPS from ffprobe stream info (avg_frame_rate first, then r_frame_rate).
+        """
+        for key in ("avg_frame_rate", "r_frame_rate"):
+            raw_value = stream_info.get(key)
+            if not raw_value:
+                continue
+            try:
+                if isinstance(raw_value, (int, float)):
+                    fps = float(raw_value)
+                else:
+                    fps_text = str(raw_value).strip()
+                    if "/" in fps_text:
+                        num, den = fps_text.split("/", 1)
+                        den_val = float(den)
+                        if den_val == 0:
+                            continue
+                        fps = float(num) / den_val
+                    else:
+                        fps = float(fps_text)
+                if fps > 0:
+                    return fps
+            except (TypeError, ValueError, ZeroDivisionError):
+                continue
+        return None
+
+    def _stability_guard_args(self, stream_info, stream_id, encoder_name):
+        """
+        Build additional safety args for known QSV runtime edge cases.
+        """
+        encoder_args = []
+        stream_args = []
+
+        # hevc_qsv can fail on some runtimes when low power mode auto-selects unsupported paths.
+        if encoder_name == "hevc_qsv":
+            stream_args += [f'-low_power:v:{stream_id}', '0']
+
+            # High-FPS inputs can fail QSV init (for example >60fps at some resolutions/devices).
+            fps = self._parse_stream_fps(stream_info or {})
+            max_supported_fps = 60.0
+            if fps and fps > max_supported_fps:
+                target_fps = str(int(max_supported_fps))
+                stream_args += [f'-r:v:{stream_id}', target_fps]
+                logger.info(
+                    "QSV guard applied on stream %s: input_fps=%.3f exceeds %.0f, clamping output fps to %s",
+                    stream_id, fps, max_supported_fps, target_fps
+                )
+
+        return encoder_args, stream_args
+
     def _smart_basic_stream_args(self, stream_id, filter_state, target_encoder):
         """
         Build smart output target args for basic mode, returning encoder/stream arg lists.
@@ -266,6 +318,10 @@ class QsvEncoder(Encoder):
         advanced_kwargs = {}
         encoder_args = []
         stream_args = []
+
+        guard_encoder_args, guard_stream_args = self._stability_guard_args(stream_info, stream_id, encoder_name)
+        encoder_args += guard_encoder_args
+        stream_args += guard_stream_args
 
         # Handle HDR
         enc_supports_hdr = (encoder_name in ["hevc_qsv"])

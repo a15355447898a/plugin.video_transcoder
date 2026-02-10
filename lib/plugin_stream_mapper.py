@@ -22,6 +22,7 @@
 
 """
 import logging
+import os
 
 from video_transcoder.lib import tools
 from video_transcoder.lib.encoders.libx import LibxEncoder
@@ -145,6 +146,25 @@ class PluginStreamMapper(StreamMapper):
             )
         )
         return needs_processing
+
+    def _effective_output_container(self):
+        """
+        Resolve the expected output container extension.
+        """
+        if self.output_file:
+            return os.path.splitext(self.output_file)[1].lstrip('.').lower()
+        if self.settings and self.settings.get_setting('keep_container'):
+            return os.path.splitext(self.abspath or '')[1].lstrip('.').lower()
+        return str(self.settings.get_setting('dest_container') or '').lstrip('.').lower()
+
+    def _stream_incompatible_with_output_container(self, codec_type: str):
+        """
+        Detect stream types that are commonly incompatible with the selected output container.
+        """
+        output_container = self._effective_output_container()
+        if output_container == 'mp4' and codec_type in ['data', 'attachment']:
+            return True
+        return False
 
     def scale_resolution(self, stream_info: dict):
         def get_test_resolution(settings):
@@ -320,6 +340,14 @@ class PluginStreamMapper(StreamMapper):
         codec_name = stream_info.get('codec_name', '').lower()
         if codec_type in ['audio']:
             return bool(self.settings.get_setting('transcode_audio_to_aac'))
+        if codec_type in ['data']:
+            if self.settings.get_setting('strip_data_streams'):
+                return True
+            return self._stream_incompatible_with_output_container(codec_type)
+        if codec_type in ['attachment']:
+            if self.settings.get_setting('strip_attachment_streams'):
+                return True
+            return self._stream_incompatible_with_output_container(codec_type)
         if self.settings.get_setting('apply_smart_filters'):
             # Video filters
             if codec_type in ['video']:
@@ -332,13 +360,6 @@ class PluginStreamMapper(StreamMapper):
                         vid_width, vid_height = self.scale_resolution(stream_info)
                         if vid_width:
                             return True
-            # Data/Attachment filters
-            if codec_type in ['data', 'attachment']:
-                # Enable removal of data and attachment streams
-                if self.settings.get_setting('remove_data_and_attachment_streams'):
-                    # Remove it
-                    return True
-
         # If the stream is a video, add a final check if the codec is already the correct format
         #   (Ignore checks if force transcode is set)
         if codec_type in ['video'] and codec_name == self.settings.get_setting('video_codec'):
@@ -433,12 +454,17 @@ class PluginStreamMapper(StreamMapper):
                     self.set_ffmpeg_generic_options(**stream_args.get("generic_kwargs", {}))
 
         elif codec_type in ['data']:
-            if not self.settings.get_setting('apply_smart_filters'):
-                # If smart filters are not enabled, return 'False' to let the default mapping just copy the data stream
-                return False
-            # Remove if settings configured to do so, strip the data stream
-            if self.settings.get_setting('strip_data_streams'):
-                tools.append_worker_log(self.worker_log, "Stream mapper stripping data stream {}".format(stream_id))
+            strip_for_container = self._stream_incompatible_with_output_container(codec_type)
+            if self.settings.get_setting('strip_data_streams') or strip_for_container:
+                if strip_for_container:
+                    tools.append_worker_log(
+                        self.worker_log,
+                        "Stream mapper stripping data stream {} (incompatible with output container '{}')".format(
+                            stream_id, self._effective_output_container()
+                        )
+                    )
+                else:
+                    tools.append_worker_log(self.worker_log, "Stream mapper stripping data stream {}".format(stream_id))
                 return {
                     'stream_mapping':  [],
                     'stream_encoding': [],
@@ -446,13 +472,17 @@ class PluginStreamMapper(StreamMapper):
             # Resort to returning 'False' to let the default mapping just copy the data stream
             return False
         elif codec_type in ['attachment']:
-            if not self.settings.get_setting('apply_smart_filters'):
-                # If smart filters are not enabled, return 'False' to let the default mapping just copy the attachment
-                #   stream
-                return False
-            # Remove if settings configured to do so, strip the attachment stream
-            if self.settings.get_setting('strip_attachment_streams'):
-                tools.append_worker_log(self.worker_log, "Stream mapper stripping attachment stream {}".format(stream_id))
+            strip_for_container = self._stream_incompatible_with_output_container(codec_type)
+            if self.settings.get_setting('strip_attachment_streams') or strip_for_container:
+                if strip_for_container:
+                    tools.append_worker_log(
+                        self.worker_log,
+                        "Stream mapper stripping attachment stream {} (incompatible with output container '{}')".format(
+                            stream_id, self._effective_output_container()
+                        )
+                    )
+                else:
+                    tools.append_worker_log(self.worker_log, "Stream mapper stripping attachment stream {}".format(stream_id))
                 return {
                     'stream_mapping':  [],
                     'stream_encoding': [],

@@ -1,3 +1,14 @@
+**<span style="color:#56adda">0.1.18</span>**
+- Fix MP4 remux failures by stripping incompatible data/attachment streams (for example `mp4s` OD/Scene streams)
+- Improve QSV HEVC stability by disabling low-power mode when unsupported and clamping very high input frame rates
+- Fix data/attachment strip decision logic to use the active `strip_data_streams` and `strip_attachment_streams` settings
+
+**<span style="color:#56adda">0.1.17</span>**
+- Add optional audio transcoding to AAC
+- Add configurable AAC audio bitrate setting
+- Skip image files during scan/worker processing (`jpg`, `jpeg`, `png`, `avif`, `webp`)
+- Update plugin metadata/name for the fork
+
 **<span style="color:#56adda">0.1.16</span>**
 - Add support for using the File Metadata helper for storing details on moved files (Requires Unmanic v0.3.0)
 - Fix issue with settings not chaing encoder when the codec changes
